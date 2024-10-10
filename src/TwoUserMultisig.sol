@@ -1,17 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
+
 import "@era-contracts/interfaces/IAccount.sol";
 import "@era-contracts/libraries/TransactionHelper.sol";
+import "@era-contracts/Constants.sol";
+import "@era-contracts/libraries/SystemContractsCaller.sol";
 
 import "@openzeppelin/contracts/interfaces/IERC1271.sol";
-
-// Used for signature validation
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-
-// Access zkSync system contracts for nonce validation via NONCE_HOLDER_SYSTEM_CONTRACT
-import "@era-contracts/Constants.sol";
-// to call non-view function of system contracts
-import "@era-contracts/libraries/SystemContractsCaller.sol";
 
 contract TwoUserMultisig is IAccount, IERC1271 {
     // to get transaction hash
