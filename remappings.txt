@@ -1,0 +1,3 @@
+@openzeppelin/=lib/openzeppelin-contracts/contracts/
+@forge-std/=lib/forge-std/src/
+@era-contracts/=lib/era-contracts/system-contracts/contracts

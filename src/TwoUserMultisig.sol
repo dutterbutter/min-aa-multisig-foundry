@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
-
-import "@matterlabs/zksync-contracts/l2/system-contracts/interfaces/IAccount.sol";
-import "@matterlabs/zksync-contracts/l2/system-contracts/libraries/TransactionHelper.sol";
+import "@era-contracts/interfaces/IAccount.sol";
+import "@era-contracts/libraries/TransactionHelper.sol";
 
 import "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
@@ -10,10 +9,9 @@ import "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 // Access zkSync system contracts for nonce validation via NONCE_HOLDER_SYSTEM_CONTRACT
-import "@matterlabs/zksync-contracts/l2/system-contracts/Constants.sol";
+import "@era-contracts/Constants.sol";
 // to call non-view function of system contracts
-import "@matterlabs/zksync-contracts/l2/system-contracts/libraries/SystemContractsCaller.sol";
-
+import "@era-contracts/libraries/SystemContractsCaller.sol";
 
 contract TwoUserMultisig is IAccount, IERC1271 {
     // to get transaction hash
@@ -51,14 +49,16 @@ contract TwoUserMultisig is IAccount, IERC1271 {
         bytes32 _suggestedSignedHash,
         Transaction calldata _transaction
     ) internal returns (bytes4 magic) {
-        console.log("Validating transaction ++++++++");
         // Incrementing the nonce of the account.
         // Note, that reserved[0] by convention is currently equal to the nonce passed in the transaction
         SystemContractsCaller.systemCallWithPropagatedRevert(
             uint32(gasleft()),
             address(NONCE_HOLDER_SYSTEM_CONTRACT),
             0,
-            abi.encodeCall(INonceHolder.incrementMinNonceIfEquals, (_transaction.nonce))
+            abi.encodeCall(
+                INonceHolder.incrementMinNonceIfEquals,
+                (_transaction.nonce)
+            )
         );
 
         bytes32 txHash;
@@ -75,9 +75,15 @@ contract TwoUserMultisig is IAccount, IERC1271 {
         // should be checked explicitly to prevent user paying for fee for a
         // transaction that wouldn't be included on Ethereum.
         uint256 totalRequiredBalance = _transaction.totalRequiredBalance();
-        require(totalRequiredBalance <= address(this).balance, "Not enough balance for fee + value");
+        require(
+            totalRequiredBalance <= address(this).balance,
+            "Not enough balance for fee + value"
+        );
 
-        if (isValidSignature(txHash, _transaction.signature) == EIP1271_SUCCESS_RETURN_VALUE) {
+        if (
+            isValidSignature(txHash, _transaction.signature) ==
+            EIP1271_SUCCESS_RETURN_VALUE
+        ) {
             magic = ACCOUNT_VALIDATION_SUCCESS_MAGIC;
         } else {
             magic = bytes4(0);
@@ -102,32 +108,42 @@ contract TwoUserMultisig is IAccount, IERC1271 {
 
             // Note, that the deployer contract can only be called
             // with a "systemCall" flag.
-            SystemContractsCaller.systemCallWithPropagatedRevert(gas, to, value, data);
+            SystemContractsCaller.systemCallWithPropagatedRevert(
+                gas,
+                to,
+                value,
+                data
+            );
         } else {
             bool success;
             assembly {
-                success := call(gas(), to, value, add(data, 0x20), mload(data), 0, 0)
+                success := call(
+                    gas(),
+                    to,
+                    value,
+                    add(data, 0x20),
+                    mload(data),
+                    0,
+                    0
+                )
             }
             require(success);
         }
     }
 
-    function executeTransactionFromOutside(Transaction calldata _transaction)
-        external
-        payable
-    {
+    function executeTransactionFromOutside(
+        Transaction calldata _transaction
+    ) external payable {
         bytes4 magic = _validateTransaction(bytes32(0), _transaction);
         require(magic == ACCOUNT_VALIDATION_SUCCESS_MAGIC, "NOT VALIDATED");
 
         _executeTransaction(_transaction);
     }
 
-    function isValidSignature(bytes32 _hash, bytes memory _signature)
-        public
-        view
-        override
-        returns (bytes4 magic)
-    {
+    function isValidSignature(
+        bytes32 _hash,
+        bytes memory _signature
+    ) public view override returns (bytes4 magic) {
         magic = EIP1271_SUCCESS_RETURN_VALUE;
 
         if (_signature.length != 130) {
@@ -141,9 +157,15 @@ contract TwoUserMultisig is IAccount, IERC1271 {
             _signature[129] = bytes1(uint8(27));
         }
 
-        (bytes memory signature1, bytes memory signature2) = extractECDSASignature(_signature);
+        (
+            bytes memory signature1,
+            bytes memory signature2
+        ) = extractECDSASignature(_signature);
 
-        if(!checkValidECDSASignatureFormat(signature1) || !checkValidECDSASignatureFormat(signature2)) {
+        if (
+            !checkValidECDSASignatureFormat(signature1) ||
+            !checkValidECDSASignatureFormat(signature2)
+        ) {
             magic = bytes4(0);
         }
 
@@ -151,34 +173,36 @@ contract TwoUserMultisig is IAccount, IERC1271 {
         address recoveredAddr2 = ECDSA.recover(_hash, signature2);
 
         // Note, that we should abstain from using the require here in order to allow for fee estimation to work
-        if(recoveredAddr1 != owner1 || recoveredAddr2 != owner2) {
+        if (recoveredAddr1 != owner1 || recoveredAddr2 != owner2) {
             magic = bytes4(0);
         }
     }
 
     // This function verifies that the ECDSA signature is both in correct format and non-malleable
-    function checkValidECDSASignatureFormat(bytes memory _signature) internal pure returns (bool) {
-        if(_signature.length != 65) {
+    function checkValidECDSASignatureFormat(
+        bytes memory _signature
+    ) internal pure returns (bool) {
+        if (_signature.length != 65) {
             return false;
         }
 
         uint8 v;
-		bytes32 r;
-		bytes32 s;
-		// Signature loading code
-		// we jump 32 (0x20) as the first slot of bytes contains the length
-		// we jump 65 (0x41) per signature
-		// for v we load 32 bytes ending with v (the first 31 come from s) then apply a mask
-		assembly {
-			r := mload(add(_signature, 0x20))
-			s := mload(add(_signature, 0x40))
-			v := and(mload(add(_signature, 0x41)), 0xff)
-		}
-		if(v != 27 && v != 28) {
+        bytes32 r;
+        bytes32 s;
+        // Signature loading code
+        // we jump 32 (0x20) as the first slot of bytes contains the length
+        // we jump 65 (0x41) per signature
+        // for v we load 32 bytes ending with v (the first 31 come from s) then apply a mask
+        assembly {
+            r := mload(add(_signature, 0x20))
+            s := mload(add(_signature, 0x40))
+            v := and(mload(add(_signature, 0x41)), 0xff)
+        }
+        if (v != 27 && v != 28) {
             return false;
         }
 
-		// EIP-2 still allows signature malleability for ecrecover(). Remove this possibility and make the signature
+        // EIP-2 still allows signature malleability for ecrecover(). Remove this possibility and make the signature
         // unique. Appendix F in the Ethereum Yellow paper (https://ethereum.github.io/yellowpaper/paper.pdf), defines
         // the valid range for s in (301): 0 < s < secp256k1n ÷ 2 + 1, and for v in (302): v ∈ {27, 28}. Most
         // signatures from current libraries generate a unique signature with an s-value in the lower half order.
@@ -187,14 +211,19 @@ contract TwoUserMultisig is IAccount, IERC1271 {
         // with 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141 - s1 and flip v from 27 to 28 or
         // vice versa. If your library also generates signatures with 0/1 for v instead 27/28, add 27 to v to accept
         // these malleable signatures as well.
-        if(uint256(s) > 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0) {
+        if (
+            uint256(s) >
+            0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0
+        ) {
             return false;
         }
 
         return true;
     }
 
-    function extractECDSASignature(bytes memory _fullSignature) internal pure returns (bytes memory signature1, bytes memory signature2) {
+    function extractECDSASignature(
+        bytes memory _fullSignature
+    ) internal pure returns (bytes memory signature1, bytes memory signature2) {
         require(_fullSignature.length == 130, "Invalid length");
 
         signature1 = new bytes(65);
@@ -204,8 +233,8 @@ contract TwoUserMultisig is IAccount, IERC1271 {
         // since it is where the length of the `_fullSignature` is stored
         assembly {
             let r := mload(add(_fullSignature, 0x20))
-			let s := mload(add(_fullSignature, 0x40))
-			let v := and(mload(add(_fullSignature, 0x41)), 0xff)
+            let s := mload(add(_fullSignature, 0x40))
+            let v := and(mload(add(_fullSignature, 0x41)), 0xff)
 
             mstore(add(signature1, 0x20), r)
             mstore(add(signature1, 0x40), s)
